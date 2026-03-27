@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reachy Mini – Conversation</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}
+    .header{padding:16px 24px;display:flex;align-items:center;gap:14px;background:#1e293b;border-bottom:1px solid #334155}
+    .header h1{font-size:20px;font-weight:700;color:#f1f5f9}
+    .dot{width:10px;height:10px;border-radius:50%;background:#475569}
+    .dot.ok{background:#22c55e}
+    .dot.active{background:#22c55e;animation:blink 1.5s infinite}
+    .dot.error{background:#ef4444}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+    #status-text{font-size:14px;color:#94a3b8;flex:1}
+    .toggle-btn{padding:8px 20px;border:2px solid #3b82f6;border-radius:10px;background:transparent;color:#3b82f6;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+    .toggle-btn:hover{background:#3b82f620}
+    .toggle-btn.active{background:#3b82f6;color:#fff}
+    .toggle-btn.active:hover{background:#2563eb}
+    .messages{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:12px}
+    .msg{max-width:80%;padding:12px 16px;border-radius:16px;font-size:15px;line-height:1.6;word-wrap:break-word}
+    .msg.user{align-self:flex-end;background:#3b82f6;color:#fff;border-bottom-right-radius:4px}
+    .msg.assistant{align-self:flex-start;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-bottom-left-radius:4px}
+    .msg.system{align-self:center;background:#1e293b;color:#94a3b8;font-size:13px;border-radius:8px;border:1px solid #334155}
+    .msg.error{align-self:center;background:#451a1a;color:#fca5a5;font-size:13px;border-radius:8px}
+    .input-bar{padding:16px 24px;background:#1e293b;border-top:1px solid #334155;display:flex;gap:10px;align-items:center}
+    .input-bar input{flex:1;padding:10px 14px;border:2px solid #334155;border-radius:12px;font-size:15px;outline:none;background:#0f172a;color:#e2e8f0}
+    .input-bar input:focus{border-color:#3b82f6}
+    .input-bar button{padding:10px 18px;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;background:#3b82f6;color:#fff}
+    .input-bar button:hover{background:#2563eb}
+    .input-bar button:disabled{background:#475569;cursor:default}
+    .listening-viz{display:none;padding:8px 24px;background:#1e293b;text-align:center}
+    .listening-viz.show{display:block}
+    .wave{display:inline-block;width:4px;height:20px;margin:0 2px;background:#3b82f6;border-radius:2px;animation:wave 1s ease-in-out infinite}
+    .wave:nth-child(2){animation-delay:.1s}
+    .wave:nth-child(3){animation-delay:.2s}
+    .wave:nth-child(4){animation-delay:.3s}
+    .wave:nth-child(5){animation-delay:.4s}
+    @keyframes wave{0%,100%{height:8px;opacity:.5}50%{height:24px;opacity:1}}
+    .cam-section{padding:0 24px 8px;background:#0f172a;display:flex;align-items:flex-start;gap:12px}
+    .cam-toggle{padding:6px 14px;border:1px solid #334155;border-radius:8px;background:transparent;color:#94a3b8;font-size:13px;cursor:pointer;white-space:nowrap}
+    .cam-toggle.on{border-color:#3b82f6;color:#3b82f6}
+    .cam-toggle:hover{background:#1e293b}
+    #cam-preview{display:none;width:200px;border-radius:10px;border:1px solid #334155}
+    canvas{display:none}
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div id="dot" class="dot"></div>
+  <h1>Reachy Mini</h1>
+  <span id="status-text">Connecting...</span>
+  <button id="toggle-btn" class="toggle-btn">Start Conversation</button>
+</div>
+
+<div id="messages" class="messages"></div>
+
+<div class="cam-section">
+  <button id="cam-toggle" class="cam-toggle">Camera Off</button>
+  <video id="cam-preview" autoplay playsinline muted></video>
+  <canvas id="cap-canvas"></canvas>
+</div>
+
+<div id="listening-viz" class="listening-viz">
+  <span class="wave"></span><span class="wave"></span><span class="wave"></span><span class="wave"></span><span class="wave"></span>
+</div>
+
+<div class="input-bar">
+  <input type="text" id="text-input" placeholder="Or type a message..." autocomplete="off" />
+  <button id="send-btn">Send</button>
+</div>
+
+<script>
+const API = "/api/chat";
+const msgs = document.getElementById("messages");
+const dot = document.getElementById("dot");
+const statusText = document.getElementById("status-text");
+const toggleBtn = document.getElementById("toggle-btn");
+const listenViz = document.getElementById("listening-viz");
+const textInput = document.getElementById("text-input");
+const sendBtn = document.getElementById("send-btn");
+const camToggle = document.getElementById("cam-toggle");
+const camPreview = document.getElementById("cam-preview");
+const capCanvas = document.getElementById("cap-canvas");
+
+let ws = null;
+let active = false;
+let camStream = null;
+let camEnabled = false;
+
+function addMsg(cls, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.textContent = text;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function setStatus(text, dotClass) {
+  statusText.textContent = text;
+  dot.className = "dot " + (dotClass || "");
+  const isListening = text.includes("Listening") || text.includes("Hearing");
+  listenViz.className = "listening-viz" + (isListening ? " show" : "");
+}
+
+// ── WebSocket ──
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(proto + "//" + location.host + API + "/ws");
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.event === "status") {
+      setStatus(msg.data, active ? "active" : "ok");
+    } else if (msg.event === "user") {
+      addMsg("user", msg.data);
+    } else if (msg.event === "assistant") {
+      addMsg("assistant", msg.data);
+    } else if (msg.event === "error") {
+      addMsg("error", msg.data);
+    }
+  };
+
+  ws.onclose = () => {
+    setTimeout(connectWS, 2000);
+  };
+}
+
+// ── Toggle conversation ──
+toggleBtn.addEventListener("click", async () => {
+  if (active) {
+    await fetch(API + "/conversation/stop", { method: "POST" });
+    active = false;
+    toggleBtn.textContent = "Start Conversation";
+    toggleBtn.classList.remove("active");
+    setStatus("Stopped", "");
+  } else {
+    const r = await fetch(API + "/conversation/start", { method: "POST" });
+    const data = await r.json();
+    if (data.status === "started" || data.status === "already_running") {
+      active = true;
+      toggleBtn.textContent = "Stop Conversation";
+      toggleBtn.classList.add("active");
+      setStatus("Starting...", "active");
+    } else {
+      addMsg("error", data.message || "Failed to start");
+    }
+  }
+});
+
+// ── Text input (works even when conversation is running) ──
+async function sendText() {
+  const text = textInput.value.trim();
+  if (!text) return;
+  textInput.value = "";
+
+  const img = camEnabled ? snapFrame() : null;
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const payload = { type: "text", text };
+    if (img) payload.image = img;
+    ws.send(JSON.stringify(payload));
+  } else {
+    // Fallback to REST
+    addMsg("user", text);
+    const body = { message: text };
+    if (img) body.image = img;
+    const r = await fetch(API + "/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    addMsg("assistant", data.response);
+  }
+}
+
+sendBtn.addEventListener("click", sendText);
+textInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendText(); });
+
+// ── Camera ──
+async function startCam() {
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    camPreview.srcObject = camStream;
+    camPreview.play();
+    camPreview.style.display = "block";
+    camEnabled = true;
+    camToggle.textContent = "Camera On";
+    camToggle.classList.add("on");
+  } catch (e) {
+    addMsg("error", "Camera not available");
+  }
+}
+
+function stopCam() {
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+  camPreview.style.display = "none";
+  camEnabled = false;
+  camToggle.textContent = "Camera Off";
+  camToggle.classList.remove("on");
+}
+
+function snapFrame() {
+  if (!camStream) return null;
+  capCanvas.width = camPreview.videoWidth || 640;
+  capCanvas.height = camPreview.videoHeight || 480;
+  capCanvas.getContext("2d").drawImage(camPreview, 0, 0);
+  return capCanvas.toDataURL("image/jpeg", 0.7).split(",")[1];
+}
+
+camToggle.addEventListener("click", () => {
+  if (camEnabled) stopCam();
+  else startCam();
+});
+
+// ── Init ──
+(async () => {
+  try {
+    const r = await fetch(API + "/config");
+    const cfg = await r.json();
+    const ok = cfg.openrouter_configured && cfg.elevenlabs_configured;
+    if (!ok) {
+      const missing = [];
+      if (!cfg.openrouter_configured) missing.push("OPENAI_API_KEY");
+      if (!cfg.elevenlabs_configured) missing.push("ELEVENLABS_API_KEY");
+      setStatus("Missing API keys", "error");
+      addMsg("error", "Set in .env: " + missing.join(", "));
+    } else {
+      setStatus("Ready — click Start Conversation", "ok");
+      addMsg("assistant", "Hi! Click 'Start Conversation' and I'll listen continuously. Or just type below.");
+    }
+    if (cfg.conversation_active) {
+      active = true;
+      toggleBtn.textContent = "Stop Conversation";
+      toggleBtn.classList.add("active");
+    }
+  } catch(e) {
+    setStatus("Cannot connect", "error");
+  }
+  connectWS();
+})();
+</script>
+</body>
+</html>

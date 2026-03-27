@@ -42,6 +42,10 @@ dependencies = [
     "gstreamer-bundle==1.28.1; sys_platform != 'linux'",
     # OS-specific: use PyGObject for Linux
     "PyGObject>=3.42.2,<=3.46.0; sys_platform == 'linux'",
+
+    # Voice & Vision chat dependencies
+    "faster-whisper",
+    "soundfile",
 ]
 
 [project.optional-dependencies]

@@ -27,6 +27,7 @@ from reachy_mini.apps.manager import AppManager
 from reachy_mini.daemon.app.routers import (
     apps,
     camera,
+    chat,
     daemon,
     hf_auth,
     kinematics,
@@ -225,6 +226,7 @@ def create_app(args: Args, health_check_event: asyncio.Event | None = None) -> F
     router.include_router(move.router)
     router.include_router(state.router)
     router.include_router(volume.router)
+    router.include_router(chat.router)
 
     if args.wireless_version:
         from .routers import cache, update, wifi_config
@@ -264,6 +266,11 @@ def create_app(args: Args, health_check_event: asyncio.Event | None = None) -> F
         return templates.TemplateResponse(
             "index.html", {"request": request, "args": args}
         )
+
+    @app.get("/chat")
+    async def chat_page(request: Request) -> HTMLResponse:
+        """Render the voice & vision chat page."""
+        return templates.TemplateResponse("chat.html", {"request": request})
 
     if args.wireless_version:
 
