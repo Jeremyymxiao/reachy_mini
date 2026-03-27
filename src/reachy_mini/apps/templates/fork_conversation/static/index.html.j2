@@ -16,7 +16,7 @@
       <header class="hero">
         <div class="pill">Headless control</div>
         <h1>{{ display_name }}</h1>
-        <p class="subtitle">Configure your OpenAI API key for the conversation app.</p>
+        <p class="subtitle">Configure your API key for the conversation app (OpenAI or OpenRouter).</p>
       </header>
 
       <div id="configured" class="panel hidden">
@@ -27,7 +27,7 @@
           </div>
           <span class="chip chip-ok">Connected</span>
         </div>
-        <p class="muted">OpenAI API key is configured. The conversation app is ready to use.</p>
+        <p class="muted">API key is configured. The conversation app is ready to use.</p>
         <button id="change-key-btn" class="ghost">Change API key</button>
       </div>
 
@@ -35,12 +35,12 @@
         <div class="panel-heading">
           <div>
             <p class="eyebrow">Credentials</p>
-            <h2>Connect OpenAI</h2>
+            <h2>Connect API</h2>
           </div>
           <span class="chip">Required</span>
         </div>
-        <p class="muted">Paste your API key once and we will store it locally for the conversation loop.</p>
-        <label for="api-key">OpenAI API Key</label>
+        <p class="muted">Paste your OpenAI or OpenRouter API key once and we will store it locally for the conversation loop.</p>
+        <label for="api-key">API Key</label>
         <input id="api-key" type="password" placeholder="sk-..." autocomplete="off" />
         <div class="actions">
           <button id="save-btn">Save key</button>
